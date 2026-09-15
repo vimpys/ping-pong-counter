@@ -1,0 +1,385 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+
+import { defaultSettings } from '@/game/settings'
+import { handleBack } from '@/native/backButton'
+import { celebrate } from '@/native/celebrate'
+import router from '@/router'
+import { clickInDocument, waitForRoute } from '@/__tests__/dom'
+import { useSessionStore } from '@/stores/session'
+import MatchView from '../MatchView.vue'
+
+vi.mock('@/native/celebrate', () => ({ celebrate: vi.fn<() => Promise<void>>() }))
+
+vi.mock('@/native/device', () => ({
+  tapFeedback: vi.fn<() => void>(),
+  winFeedback: vi.fn<() => void>(),
+  setKeepAwake: vi.fn<(on: boolean) => Promise<void>>(),
+}))
+
+const PLAYERS = [
+  { id: 'ton', name: 'ต้น' },
+  { id: 'boy', name: 'บอย' },
+  { id: 'jay', name: 'เจ' },
+]
+
+async function mountMatch(streakRule = defaultSettings().streakRule) {
+  const session = useSessionStore()
+  session.start({ ...defaultSettings(), targetScore: 11, streakRule }, PLAYERS)
+  await router.push('/match')
+  const wrapper = mount(MatchView, { global: { plugins: [router] }, attachTo: document.body })
+  await flushPromises()
+  return { wrapper, session }
+}
+
+const redPanel = 'button[aria-label^="เพิ่มแต้มฝั่งแดง"]'
+const bluePanel = 'button[aria-label^="เพิ่มแต้มฝั่งน้ำเงิน"]'
+
+describe('MatchView', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    document.body.innerHTML = ''
+  })
+
+  it('shows both players, the score and who serves', async () => {
+    const { wrapper } = await mountMatch()
+    const text = wrapper.text()
+    expect(text).toContain('ต้น')
+    expect(text).toContain('บอย')
+    expect(text).toContain('เกมที่ 1')
+    expect(text).toContain('เสิร์ฟ 1/2')
+    expect(text).not.toContain('ฝั่งแดง')
+  })
+
+  it('shows the rules as symbols: target score and deuce lead, without serve text', async () => {
+    const { wrapper } = await mountMatch()
+    expect(wrapper.get('[aria-label="แข่งถึง 11 แต้ม"]').text()).toBe('11')
+    expect(wrapper.get('[aria-label="ดิวต้องนำ 2 แต้ม"]').text()).toMatch(/ดิว\s*\+2/)
+    expect(wrapper.text()).not.toContain('สลับเสิร์ฟทุก')
+  })
+
+  it('scores on tap and undoes from the side that just scored', async () => {
+    const { wrapper, session } = await mountMatch()
+
+    await wrapper.get(redPanel).trigger('click')
+    expect(session.game!.status.score).toEqual({ red: 1, blue: 0 })
+
+    const undo = wrapper.findAll('button').filter((b) => b.text() === 'ย้อนแต้ม')
+    expect(undo).toHaveLength(1)
+    await undo[0]!.trigger('click')
+    expect(session.game!.status.score).toEqual({ red: 0, blue: 0 })
+  })
+
+  it('ignores an accidental second tap right after the first', async () => {
+    const { wrapper, session } = await mountMatch()
+
+    await wrapper.get(redPanel).trigger('click')
+    await wrapper.get(bluePanel).trigger('click')
+    expect(session.game!.status.score).toEqual({ red: 1, blue: 0 })
+
+    vi.advanceTimersByTime(500)
+    await wrapper.get(bluePanel).trigger('click')
+    expect(session.game!.status.score).toEqual({ red: 1, blue: 1 })
+  })
+
+  it('shows the deuce banner', async () => {
+    const { wrapper, session } = await mountMatch()
+    for (let i = 0; i < 10; i++) {
+      session.score('red')
+      session.score('blue')
+    }
+    await flushPromises()
+    expect(wrapper.text()).toContain('ต้องนำ 2 แต้มถึงชนะ')
+    expect(wrapper.text()).not.toMatch(/เสิร์ฟ \d/)
+  })
+
+  it('shows the winner dialog, blocks scoring and starts the next game', async () => {
+    const { wrapper, session } = await mountMatch()
+    for (let i = 0; i < 11; i++) session.score('red')
+    await flushPromises()
+
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(dialog.textContent).toContain('จบเกมที่ 1 · ฝั่งแดงชนะ')
+    expect(dialog.textContent).toContain('ต้น ชนะ')
+    expect(dialog.textContent).toMatch(/11\s*ต้น\s*–\s*0\s*บอย/)
+    expect(dialog.textContent).toMatch(/ต้น\s*พบ\s*เจ/)
+    expect(dialog.textContent).toContain('เจ เสิร์ฟก่อน')
+    expect(dialog.textContent).not.toContain('ชนะติดครบ')
+    expect(wrapper.get(bluePanel).attributes('disabled')).toBeDefined()
+
+    await clickInDocument('เริ่มเกมถัดไป')
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(wrapper.text()).toContain('เกมที่ 2')
+    expect(session.state!.queue).toEqual(['boy'])
+  })
+
+  it('undoes the winning point from the dialog', async () => {
+    const { session } = await mountMatch()
+    for (let i = 0; i < 11; i++) session.score('red')
+    await flushPromises()
+
+    await clickInDocument('ย้อนแต้มล่าสุด')
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(session.game!.status).toMatchObject({ winner: null, score: { red: 10, blue: 0 } })
+  })
+
+  it('goes to the summary from the winner dialog', async () => {
+    const { session } = await mountMatch()
+    for (let i = 0; i < 11; i++) session.score('red')
+    await flushPromises()
+
+    await clickInDocument('จบการแข่งขัน · ดูสรุปผล')
+    await waitForRoute('summary')
+    expect(router.currentRoute.value.name).toBe('summary')
+  })
+
+  it('tells when the streak is complete and both players go to the queue', async () => {
+    const { session } = await mountMatch({ enabled: true, wins: 2 })
+    const winAsRed = async () => {
+      for (let i = 0; i < 11; i++) session.score('red')
+      await flushPromises()
+    }
+    await winAsRed()
+    await clickInDocument('เริ่มเกมถัดไป') // ต้น vs เจ
+    await winAsRed()
+
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(dialog.textContent).toContain('ชนะติดครบ 2 เกม · ต้นและเจไปต่อท้ายคิว')
+    expect(dialog.textContent).toMatch(/บอย\s*พบ\s*เจ/)
+    expect(dialog.textContent).toContain('บอย เสิร์ฟก่อน')
+  })
+
+  it('lists the waiting queue with stats', async () => {
+    const { wrapper } = await mountMatch()
+    const queue = wrapper.get('ol')
+    expect(queue.text()).toContain('เจ')
+    expect(queue.text()).toContain('คนถัดไป')
+    expect(queue.text()).toContain('ชนะ 0')
+  })
+})
+
+describe('MatchView long deuce celebration', () => {
+  /** เสมอกัน n ครั้งตั้งแต่ 10–10 (กติกา 11 แต้ม) แล้วแดงชนะ 2 แต้มติด */
+  async function winAfterDeuceTies(ties: number) {
+    const { session } = await mountMatch()
+    for (let i = 0; i < 9 + ties; i++) {
+      session.score('red')
+      session.score('blue')
+    }
+    session.score('red')
+    session.score('red')
+    await flushPromises()
+    return document.querySelector('[role="dialog"]')?.textContent ?? ''
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.mocked(celebrate).mockClear()
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('does not celebrate 3 deuce ties', async () => {
+    const text = await winAfterDeuceTies(3)
+    expect(text).toContain('ต้น ชนะ')
+    expect(text).not.toContain('สุดยอด')
+    expect(celebrate).not.toHaveBeenCalled()
+  })
+
+  it('says สุดยอด with confetti after more than 3 ties', async () => {
+    const text = await winAfterDeuceTies(4)
+    expect(text).toContain('สุดยอด!')
+    expect(text).not.toContain('โคตรเดือด')
+    expect(text).toContain('ดิวกันไป 4 ครั้ง')
+    expect(celebrate).toHaveBeenCalledOnce()
+  })
+
+  it('says โคตรเดือด after more than 5 ties', async () => {
+    const text = await winAfterDeuceTies(6)
+    expect(text).toContain('โคตรเดือด!')
+    expect(text).not.toContain('สุดยอด')
+    expect(text).toContain('ดิวกันไป 6 ครั้ง')
+  })
+})
+
+describe('MatchView keyboard shortcuts', () => {
+  const press = async (key: string, init: KeyboardEventInit = {}) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true, ...init }))
+    await flushPromises()
+    vi.advanceTimersByTime(500) // พ้นช่วงกันแตะซ้ำ
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    document.body.innerHTML = ''
+  })
+
+  it('scores with arrows / A / L and undoes with Backspace / Z', async () => {
+    const { session } = await mountMatch()
+    await press('ArrowLeft')
+    await press('a')
+    await press('ArrowRight')
+    await press('L')
+    expect(session.game!.status.score).toEqual({ red: 2, blue: 2 })
+
+    await press('Backspace')
+    await press('z')
+    expect(session.game!.status.score).toEqual({ red: 2, blue: 0 })
+  })
+
+  it('ignores shortcuts with modifier keys, while typing, or with a sheet open', async () => {
+    const { wrapper, session } = await mountMatch()
+    await press('ArrowLeft', { metaKey: true })
+    expect(session.game!.status.score).toEqual({ red: 0, blue: 0 })
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'เพิ่มผู้เล่น')!
+      .trigger('click')
+    await flushPromises()
+    await press('a')
+    expect(session.game!.status.score).toEqual({ red: 0, blue: 0 })
+  })
+
+  it('starts the next game with Enter once there is a winner', async () => {
+    const { wrapper, session } = await mountMatch()
+    await press('Enter')
+    expect(session.game!.no).toBe(1)
+
+    for (let i = 0; i < 11; i++) session.score('red')
+    await flushPromises()
+    await press('ArrowRight') // ทำแต้มไม่ได้ระหว่าง dialog ผู้ชนะ
+    expect(session.game!.status.score).toEqual({ red: 11, blue: 0 })
+
+    await press('Enter')
+    expect(wrapper.text()).toContain('เกมที่ 2')
+  })
+})
+
+describe('MatchView queue management', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('withdraws a player on court from the ⋯ menu', async () => {
+    const { wrapper, session } = await mountMatch()
+    await wrapper.get('button[aria-label="จัดการ ต้น"]').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('ต้น · กำลังแข่งฝั่งแดง')
+    expect(document.body.textContent).toContain('เจลงแทน')
+
+    await clickInDocument('ถอนตัว')
+    expect(session.state!.court.red).toBe('jay')
+    expect(session.state!.inactive).toEqual(['ton'])
+    expect(wrapper.text()).toContain('ออกจากการแข่งขัน · แตะเพื่อกลับเข้า')
+  })
+
+  it('lets a waiting player leave and come back', async () => {
+    const { wrapper, session } = await mountMatch()
+    await wrapper.get('button[aria-label="จัดการ เจ"]').trigger('click')
+    await flushPromises()
+    await clickInDocument('ออกจากการแข่งขัน')
+    expect(session.state!.inactive).toEqual(['jay'])
+
+    await wrapper.get('button[aria-label="จัดการ เจ (ออกจากการแข่งขัน)"]').trigger('click')
+    await flushPromises()
+    await clickInDocument('กลับเข้าการแข่งขัน')
+    expect(session.state!.queue).toEqual(['jay'])
+    expect(session.state!.inactive).toEqual([])
+  })
+
+  it('adds a player from the sheet', async () => {
+    const { wrapper, session } = await mountMatch()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'เพิ่มผู้เล่น')!
+      .trigger('click')
+    await flushPromises()
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="ชื่อผู้เล่น"]')!
+    input.value = 'ฝน'
+    input.dispatchEvent(new Event('input'))
+    input.form!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+
+    expect(session.state!.queue.map(session.playerName)).toEqual(['เจ', 'ฝน'])
+  })
+
+  it('reorders the queue when the list is dragged', async () => {
+    const { wrapper, session } = await mountMatch()
+    session.addPlayer('ฝน')
+    await flushPromises()
+    const [jay, fon] = session.state!.queue as [string, string]
+
+    wrapper.findComponent({ name: 'QueueSection' }).vm.$emit('reorder', [fon, jay])
+    await flushPromises()
+    expect(session.state!.queue).toEqual([fon, jay])
+    expect(wrapper.get('ol').text()).toMatch(/^1\s*ฝน/)
+  })
+})
+
+describe('MatchView leaving', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('asks before leaving and keeps the session', async () => {
+    const { wrapper, session } = await mountMatch()
+    session.score('red')
+    await wrapper.get('button[aria-label="ออกจากหน้าแข่ง"]').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('ออกจากหน้าแข่ง?')
+    expect(document.body.textContent).toContain('เกมที่ 1 ค้างไว้ที่สกอร์ 1–0')
+
+    await clickInDocument('ออกไปหน้าแรก')
+    await waitForRoute('home')
+    expect(session.game!.status.score).toEqual({ red: 1, blue: 0 })
+  })
+
+  it('opens the leave question on Android back, and closes it on the next back', async () => {
+    await mountMatch()
+    expect(handleBack()).toBe('handled')
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('ออกจากหน้าแข่ง?')
+
+    expect(handleBack()).toBe('handled')
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('does not close the winner dialog on Android back', async () => {
+    const { session } = await mountMatch()
+    for (let i = 0; i < 11; i++) session.score('red')
+    await flushPromises()
+
+    handleBack()
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('ต้น ชนะ')
+  })
+})

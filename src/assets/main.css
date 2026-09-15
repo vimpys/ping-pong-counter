@@ -1,0 +1,110 @@
+@import 'tailwindcss';
+
+/* Design tokens — ธีม Candy (สีฝั่งแดง/น้ำเงินคงเดิมตามแบบ) */
+@theme {
+  --color-bg: #fff6fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #fde8f1;
+  --color-line: #f5cfe0;
+  --color-divider: #f8e4ee;
+  --color-ink: #3d2344;
+  --color-muted: #8c7090;
+  --color-faint: #baa4be;
+  --color-primary: #ec4f93;
+  --color-on-primary: #ffffff;
+  --color-accent: #ffbf3c;
+  --color-danger: #e0445a;
+
+  --color-red-side: #d9434a;
+  --color-blue-side: #3b7be6;
+
+  --shadow-card: 0 1px 2px rgb(61 35 68 / 0.04), 0 6px 16px rgb(236 79 147 / 0.08);
+
+  --animate-fade-in: fade-in 160ms ease-out;
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  --animate-sheet-up: sheet-up 220ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+  }
+
+  --animate-pop-in: pop-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      scale: 0.9;
+    }
+  }
+
+  --animate-score-pop: score-pop 180ms ease-out;
+  @keyframes score-pop {
+    from {
+      transform: scale(0.86);
+      opacity: 0.6;
+    }
+  }
+
+  --font-display: 'Chakra Petch', 'Anuphan', sans-serif;
+  --font-body: 'Anuphan', 'Noto Sans Thai', 'Leelawadee UI', Tahoma, sans-serif;
+}
+
+/* พื้นหลังลายโดดเดิลพาสเทล (หน้าตั้งค่า) */
+@utility bg-doodles {
+  background-color: var(--color-bg);
+  background-image: url('./doodles.svg');
+  background-size: 240px 240px;
+}
+
+/* ปุ่มคีย์บอร์ดในข้อความ (คีย์ลัด) */
+@utility kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 0.35em;
+  border-radius: 6px;
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@utility pt-safe {
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+}
+
+@utility pb-safe {
+  padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg font-body text-ink antialiased;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}

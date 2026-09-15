@@ -1,0 +1,15 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "1 · ตั้งค่าเกม (ทั้งหน้า)", "x": 0, "y": 0, "w": 390, "h": 1120 },
+    { "file": "Match.dc.html", "title": "2 · หน้าแข่ง", "x": 480, "y": 0, "w": 390, "h": 844 },
+    { "file": "MatchDeuce.dc.html", "title": "2b · หน้าแข่ง ช่วงดิว", "x": 960, "y": 0, "w": 390, "h": 844 },
+    { "file": "Summary.dc.html", "title": "3 · สรุปผลการแข่งขัน", "x": 1440, "y": 0, "w": 390, "h": 844 },
+    { "file": "MatchReorder.dc.html", "title": "2c · ลากสลับคิว", "x": 480, "y": 964, "w": 390, "h": 844 },
+    { "file": "MatchLeave.dc.html", "title": "2d · ผู้เล่นในคิวออก", "x": 960, "y": 964, "w": 390, "h": 844 },
+    { "file": "MatchWithdraw.dc.html", "title": "2e · ผู้เล่นที่กำลังแข่งถอนตัว", "x": 1440, "y": 964, "w": 390, "h": 844 },
+    { "file": "MatchQueueOut.dc.html", "title": "2f · หลังถอนตัว รายชื่ออยู่ล่างสุด", "x": 480, "y": 1928, "w": 390, "h": 844 },
+    { "file": "MatchRejoin.dc.html", "title": "2g · กลับเข้าการแข่งขัน", "x": 960, "y": 1928, "w": 390, "h": 844 },
+    { "file": "MatchWin.dc.html", "title": "2h · ประกาศผู้ชนะ", "x": 1920, "y": 0, "w": 390, "h": 844 }
+  ],
+  "launch": { "view": "canvas" }
+}
