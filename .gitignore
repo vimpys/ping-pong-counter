@@ -41,7 +41,13 @@ __screenshots__/
 # Built design canvas (regenerated from design/*.dc.html)
 design/ping-pong-scorer-screens.html
 
+# Private project notes
+PROJECT-SCOPE.md
+
 # Release signing — ห้าม commit (สำรองไว้นอกโปรเจกต์)
 *.jks
 *.keystore
 android/keystore.properties
+
+# Built APK / PWA zip for sharing
+/release
