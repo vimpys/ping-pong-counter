@@ -4,12 +4,14 @@ import { RouterLink, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 
 import AppIcon from '@/components/AppIcon.vue'
+import DragHalo from '@/components/match/DragHalo.vue'
 import MatchSheet from '@/components/match/MatchSheet.vue'
 import QueueSection from '@/components/match/QueueSection.vue'
 import SidePanel from '@/components/match/SidePanel.vue'
 import WinnerDialog from '@/components/match/WinnerDialog.vue'
 import type { MatchSheetState } from '@/components/match/types'
 import { useMatchShortcuts } from '@/composables/useMatchShortcuts'
+import { usePanelDrag } from '@/composables/usePanelDrag'
 import { otherSide, SIDES, type Side } from '@/game/rules'
 import { useBackButton } from '@/native/backButton'
 import { setKeepAwake, tapFeedback, winFeedback } from '@/native/device'
@@ -75,6 +77,44 @@ const panels = computed(() =>
   }),
 )
 
+// ---------- ลากเพื่อสลับข้าง ----------
+
+const {
+  drag,
+  point: dragPoint,
+  settling,
+  handlers: dragHandlers,
+} = usePanelDrag({
+  canSwapSides: () => !!game.value && !game.value.status.winner,
+  canMoveServe: () => canMoveServe.value,
+  onSwapSides: () => {
+    session.swap()
+    tapFeedback()
+  },
+  onMoveServe: (side) => {
+    session.setServer(side)
+    tapFeedback()
+  },
+})
+
+const draggingPanel = (side: Side) => drag.value?.kind === 'side' && drag.value.side === side
+
+function panelStyle(side: Side) {
+  if (!draggingPanel(side)) return undefined
+  return { transform: `translateX(${drag.value!.offset}px) scale(1.03)`, transition: 'none' }
+}
+
+/** ลากป้ายเสิร์ฟได้ตอนนี้ (0–0) → บอกผู้ใช้ในแถวคำแนะนำ */
+const canMoveServe = computed(() => !!game.value && state.value?.points.length === 0)
+
+const dragHint = computed(() => {
+  const d = drag.value
+  if (!d) return null
+  if (d.kind === 'serve')
+    return d.willApply ? 'ปล่อยเพื่อเปลี่ยนคนเสิร์ฟ' : 'ลากไปอีกฝั่งเพื่อเปลี่ยนคนเสิร์ฟ'
+  return d.willApply ? 'ปล่อยเพื่อสลับข้าง' : 'ลากไปอีกฝั่งเพื่อสลับข้าง'
+})
+
 const streakTarget = computed(() =>
   settings.value?.streakRule.enabled ? settings.value.streakRule.wins : null,
 )
@@ -115,6 +155,26 @@ const winnerDialog = computed(() => {
     deuceTies: status.deuceTies,
   }
 })
+
+// ---------- ลากคนในคิวลงแทน (ตอน 0–0) ----------
+
+const canReplace = computed(() => !!state.value && state.value.points.length === 0)
+const replaceTarget = ref<{ playerId: string; side: Side } | null>(null)
+
+const replaceHint = computed(() => {
+  const target = replaceTarget.value
+  if (!target) return null
+  const replaced = session.playerName(state.value?.court[target.side] ?? null)
+  const name = session.playerName(target.playerId)
+  return replaced ? `ปล่อยเพื่อให้${name}ลงแทน${replaced}` : `ปล่อยเพื่อให้${name}ลงสนาม`
+})
+
+function onReplace(playerId: string, side: Side) {
+  replaceTarget.value = null
+  if (!canReplace.value) return
+  session.replace(playerId, side)
+  tapFeedback()
+}
 
 const queue = computed(() => (state.value?.queue ?? []).map(session.playerItem))
 const inactive = computed(() => (state.value?.inactive ?? []).map(session.playerItem))
@@ -184,11 +244,23 @@ onUnmounted(() => setKeepAwake(false))
       </RouterLink>
     </header>
 
-    <div class="grid shrink-0 basis-[51%] grid-cols-2 gap-2 px-3">
+    <div class="grid shrink-0 basis-[51%] grid-cols-2 gap-2 px-3 select-none" v-bind="dragHandlers">
       <SidePanel
         v-for="{ playerId, ...panel } in panels"
         :key="panel.side"
         v-bind="panel"
+        :data-side="panel.side"
+        class="touch-pan-y transition-[transform,opacity] duration-200"
+        :class="{
+          'z-10 shadow-2xl': draggingPanel(panel.side) || drag?.side === panel.side,
+          'pointer-events-none **:pointer-events-none': settling === panel.side,
+          'opacity-60': drag?.kind === 'side' && drag.willApply && drag.side !== panel.side,
+          'scale-[1.03] ring-4 ring-accent ring-inset': replaceTarget?.side === panel.side,
+          'ring-4 ring-white ring-inset':
+            drag?.kind === 'serve' && drag.willApply && drag.side !== panel.side,
+        }"
+        :style="panelStyle(panel.side)"
+        :serve-offset="drag?.kind === 'serve' && drag.side === panel.side ? drag.offset : null"
         :streak-target="streakTarget"
         @score="onScore(panel.side)"
         @undo="onUndo"
@@ -198,6 +270,8 @@ onUnmounted(() => setKeepAwake(false))
 
     <div class="flex min-h-13 shrink-0 items-center justify-center px-4 py-2" aria-live="polite">
       <p v-if="winnerDialog" class="text-[13px] text-muted">จบเกมแล้ว</p>
+      <p v-else-if="replaceHint" class="text-[13px] font-semibold">{{ replaceHint }}</p>
+      <p v-else-if="dragHint" class="text-[13px] font-semibold">{{ dragHint }}</p>
       <div
         v-else-if="game?.status.isDeuce"
         class="flex h-8 items-center gap-2 rounded-full bg-accent px-3.5 text-ink"
@@ -209,11 +283,16 @@ onUnmounted(() => setKeepAwake(false))
         ผู้เล่นไม่พอ · เพิ่มผู้เล่นเพื่อเริ่มเกม
       </p>
       <template v-else>
-        <p class="text-[13px] text-faint pointer-fine:hidden">แตะฝั่งที่ได้แต้มเพื่อนับคะแนน</p>
+        <p class="text-center text-[13px] text-faint pointer-fine:hidden">
+          แตะฝั่งที่ได้แต้มเพื่อนับคะแนน · ลากแผงเพื่อสลับข้าง
+          <br v-if="canMoveServe" />
+          <template v-if="canMoveServe">ลากป้ายเสิร์ฟไปอีกฝั่งเพื่อเปลี่ยนคนเสิร์ฟ</template>
+        </p>
         <!-- คอม / Mac ที่ใช้เมาส์: บอกคีย์ลัด -->
         <p class="hidden text-[13px] text-faint pointer-fine:block">
           คีย์ลัด <kbd class="kbd">←</kbd> แดง · <kbd class="kbd">→</kbd> น้ำเงิน ·
-          <kbd class="kbd">Backspace</kbd> ย้อนแต้ม
+          <kbd class="kbd">Backspace</kbd> ย้อนแต้ม · ลากแผงเพื่อสลับข้าง
+          <template v-if="canMoveServe"> · ลากป้ายเสิร์ฟเพื่อเปลี่ยนคนเสิร์ฟ</template>
         </p>
       </template>
     </div>
@@ -229,11 +308,17 @@ onUnmounted(() => setKeepAwake(false))
     <QueueSection
       :queue="queue"
       :inactive="inactive"
+      :can-replace="canReplace"
       @reorder="session.reorder"
       @select="(kind, playerId) => (sheet = { kind, playerId })"
       @add="sheet = { kind: 'add' }"
+      @hover-court="replaceTarget = $event"
+      @replace="onReplace"
     />
 
     <MatchSheet v-model:sheet="sheet" />
+
+    <!-- ลากป้ายเสิร์ฟใช้กรอบเรืองรอบป้ายแทน -->
+    <DragHalo v-if="dragPoint && drag?.kind === 'side'" :x="dragPoint.x" :y="dragPoint.y" />
   </main>
 </template>

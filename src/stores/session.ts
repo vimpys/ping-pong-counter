@@ -12,10 +12,13 @@ import {
   playerStats,
   previewNextGame,
   rejoinPlayer,
+  replaceCourtPlayer,
   reorderQueue,
   scorePoint,
+  setFirstServer,
   startNextGame,
   streakOf,
+  swapSides,
   undoPoint,
   withdrawPlayer,
   type PlayerEntry,
@@ -86,6 +89,8 @@ export const useSessionStore = defineStore('session', () => {
   const score = (side: Side) => update((s) => scorePoint(s, side))
   const undo = () => update(undoPoint)
   const nextGame = () => update(startNextGame)
+  const swap = () => update(swapSides)
+  const setServer = (side: Side) => update((s) => setFirstServer(s, side))
 
   /** เพิ่มผู้เล่นระหว่างการแข่ง → ต่อท้ายคิว */
   function addPlayer(rawName: string): AddPlayerError | null {
@@ -100,6 +105,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   const reorder = (ids: readonly string[]) => update((s) => reorderQueue(s, ids))
+  const replace = (id: string, side: Side) => update((s) => replaceCourtPlayer(s, id, side))
   const leave = (id: string) => update((s) => leaveQueue(s, id))
   const rejoin = (id: string) => update((s) => rejoinPlayer(s, id))
   const withdraw = (id: string) => update((s) => withdrawPlayer(s, id))
@@ -124,8 +130,11 @@ export const useSessionStore = defineStore('session', () => {
     score,
     undo,
     nextGame,
+    swap,
+    setServer,
     addPlayer,
     reorder,
+    replace,
     leave,
     rejoin,
     withdraw,

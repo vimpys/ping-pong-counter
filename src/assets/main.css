@@ -50,6 +50,34 @@
     }
   }
 
+  /* วงเรืองรอบนิ้วตอนลาก — ขยายแล้วจางวนไป */
+  --animate-drag-halo: drag-halo 900ms ease-out infinite;
+  @keyframes drag-halo {
+    from {
+      scale: 0.6;
+      opacity: 0.7;
+    }
+    to {
+      scale: 1.6;
+      opacity: 0;
+    }
+  }
+
+  /* กรอบเรืองรอบสิ่งที่กำลังลาก (แถวในคิว / ป้ายเสิร์ฟ) — สว่างขึ้นลงเป็นจังหวะ */
+  --animate-drag-glow: drag-glow 900ms ease-in-out infinite alternate;
+  @keyframes drag-glow {
+    from {
+      box-shadow:
+        0 0 0 2px var(--color-accent),
+        0 0 18px 2px color-mix(in srgb, var(--color-accent) 70%, transparent);
+    }
+    to {
+      box-shadow:
+        0 0 0 3px var(--color-accent),
+        0 0 30px 8px color-mix(in srgb, var(--color-accent) 45%, transparent);
+    }
+  }
+
   --font-display: 'Chakra Petch', 'Anuphan', sans-serif;
   --font-body: 'Anuphan', 'Noto Sans Thai', 'Leelawadee UI', Tahoma, sans-serif;
 }

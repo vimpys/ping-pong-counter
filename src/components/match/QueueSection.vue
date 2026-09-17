@@ -1,20 +1,75 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { VueDraggable } from 'vue-draggable-plus'
+import { computed, onUnmounted } from 'vue'
+import { VueDraggable, type SortableEvent } from 'vue-draggable-plus'
 
 import AppIcon from '@/components/AppIcon.vue'
+import type { Side } from '@/game/rules'
 import type { QueueItem } from './types'
 
 const props = defineProps<{
   queue: QueueItem[]
   inactive: QueueItem[]
+  /** ลากคนในคิวไปวางบนแผงในสนามเพื่อลงแทนได้ (ตอน 0–0) */
+  canReplace: boolean
 }>()
 
 const emit = defineEmits<{
   reorder: [ids: string[]]
   select: [kind: 'queue' | 'inactive', id: string]
   add: []
+  /** กำลังลากคนในคิวอยู่เหนือแผงฝั่งไหน — `null` เมื่อไม่ได้อยู่เหนือแผง / เลิกลาก */
+  hoverCourt: [target: { playerId: string; side: Side } | null]
+  replace: [playerId: string, side: Side]
 }>()
+
+// ---------- ลากคนในคิวไปลงสนาม ----------
+
+let dragging: { playerId: string; side: Side | null } | null = null
+
+function pointOf(event: Event): { x: number; y: number } | null {
+  if ('touches' in event) {
+    const touch = (event as TouchEvent).touches[0] ?? (event as TouchEvent).changedTouches[0]
+    return touch ? { x: touch.clientX, y: touch.clientY } : null
+  }
+  const { clientX, clientY } = event as MouseEvent
+  return { x: clientX, y: clientY }
+}
+
+function onMove(event: Event) {
+  const point = dragging && pointOf(event)
+  if (!dragging || !point) return
+  const panel = document.elementFromPoint(point.x, point.y)?.closest<HTMLElement>('[data-side]')
+  const side = panel?.dataset.side
+  const next = side === 'red' || side === 'blue' ? side : null
+  if (next === dragging.side) return
+  dragging.side = next
+  emit('hoverCourt', next ? { playerId: dragging.playerId, side: next } : null)
+}
+
+const MOVE_EVENTS = ['pointermove', 'mousemove', 'touchmove'] as const
+
+function stopTracking() {
+  for (const type of MOVE_EVENTS) document.removeEventListener(type, onMove, true)
+  if (dragging?.side) emit('hoverCourt', null)
+  dragging = null
+}
+
+function onDragStart(event: SortableEvent) {
+  const player = props.queue[event.oldIndex ?? -1]
+  if (!props.canReplace || !player) return
+  dragging = { playerId: player.id, side: null }
+  for (const type of MOVE_EVENTS) {
+    document.addEventListener(type, onMove, { capture: true, passive: true })
+  }
+}
+
+function onDragEnd() {
+  const target = dragging
+  stopTracking()
+  if (target?.side) emit('replace', target.playerId, target.side)
+}
+
+onUnmounted(stopTracking)
 
 const queueModel = computed({
   get: () => props.queue,
@@ -46,7 +101,10 @@ const queueModel = computed({
         เพิ่มผู้เล่น
       </button>
     </div>
-    <p v-if="queue.length > 1" class="mt-0.5 shrink-0 px-4 text-xs text-faint">
+    <p v-if="canReplace && queue.length > 0" class="mt-0.5 shrink-0 px-4 text-xs text-faint">
+      ลากที่จุดด้านขวาเพื่อสลับคิว หรือวางบนแผงผู้เล่นเพื่อลงแทน
+    </p>
+    <p v-else-if="queue.length > 1" class="mt-0.5 shrink-0 px-4 text-xs text-faint">
       แตะชื่อเพื่อจัดการ · ลากที่จุดด้านขวาเพื่อสลับคิว
     </p>
 
@@ -57,8 +115,13 @@ const queueModel = computed({
         tag="ol"
         handle=".drag-handle"
         :animation="150"
+        force-fallback
+        fallback-on-body
+        @start="onDragStart"
+        @end="onDragEnd"
         ghost-class="opacity-30"
         chosen-class="queue-chosen"
+        drag-class="queue-drag"
       >
         <li
           v-for="(player, index) in queue"
@@ -136,5 +199,14 @@ const queueModel = computed({
 <style scoped>
 :deep(.queue-chosen) {
   box-shadow: var(--shadow-card);
+}
+
+/* แถวที่ลอยตามนิ้วตอนลาก — กรอบเรืองรอบทั้งแถว (Sortable คัดลอกแถวไปไว้ใน body) */
+.queue-drag {
+  border-radius: 14px;
+  border-bottom-color: transparent;
+  padding-inline: 8px;
+  opacity: 1 !important;
+  animation: var(--animate-drag-glow);
 }
 </style>

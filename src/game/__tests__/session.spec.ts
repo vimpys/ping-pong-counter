@@ -10,11 +10,14 @@ import {
   playerStats,
   previewNextGame,
   rejoinPlayer,
+  replaceCourtPlayer,
   reorderQueue,
   scorePoint,
+  setFirstServer,
   SessionError,
   startNextGame,
   streakOf,
+  swapSides,
   undoPoint,
   withdrawPlayer,
   type SessionState,
@@ -323,5 +326,64 @@ describe('stats', () => {
   it('ignores void games', () => {
     const state = withdrawPlayer(score(newSession(), 'rrr'), 'boy')
     expect(playerStats(state).every((p) => p.played === 0)).toBe(true)
+  })
+})
+
+describe('swapSides', () => {
+  it('moves players across while their score and serve follow them', () => {
+    const before = score(newSession(), 'rrb')
+    const after = swapSides(before)
+    expect(court(after)).toEqual(['boy', 'ton'])
+    expect(currentGame(after)!.status.score).toEqual({ red: 1, blue: 2 })
+    expect(currentGame(after)!.status.serve.server).toBe('red')
+    expect(currentGame(before)!.status.serve.server).toBe('blue')
+    expect(swapSides(after)).toEqual(before)
+  })
+
+  it('keeps the winner and stats with the player in later games', () => {
+    let s = swapSides(newSession())
+    s = winGame(s, 'red')
+    expect(stat(s, 'boy').wins).toBe(1)
+    expect(stat(s, 'ton').losses).toBe(1)
+    expect(court(s)).toEqual(['boy', 'jay'])
+    expect(streakOf(s, 'boy')).toBe(1)
+  })
+
+  it('undoes the last point of the right player after swapping', () => {
+    const s = undoPoint(swapSides(score(newSession(), 'rb')))
+    expect(currentGame(s)!.status.score).toEqual({ red: 0, blue: 1 })
+  })
+})
+
+describe('setFirstServer', () => {
+  it('changes who serves first at 0–0', () => {
+    const s = setFirstServer(newSession(), 'blue')
+    expect(currentGame(s)!.status.serve.server).toBe('blue')
+    expect(currentGame(score(s, 'rr'))!.status.serve.server).toBe('red')
+  })
+
+  it('is locked once the game has points', () => {
+    expect(() => setFirstServer(score(newSession(), 'r'), 'blue')).toThrow(SessionError)
+  })
+})
+
+describe('replaceCourtPlayer', () => {
+  it('puts a queued player on court and the replaced player at the head of the queue', () => {
+    const s = replaceCourtPlayer(newSession(), 'fon', 'blue')
+    expect(court(s)).toEqual(['ton', 'fon'])
+    expect(s.queue).toEqual(['boy', 'jay', 'mew'])
+  })
+
+  it('resets the streak of the replaced player', () => {
+    const s = winGame(newSession(), 'red')
+    expect(streakOf(s, 'ton')).toBe(1)
+    const replaced = replaceCourtPlayer(s, 'mew', 'red')
+    expect(streakOf(replaced, 'ton')).toBe(0)
+    expect(replaced.queue[0]).toBe('ton')
+  })
+
+  it('only works at 0–0 and for queued players', () => {
+    expect(() => replaceCourtPlayer(score(newSession(), 'r'), 'jay', 'red')).toThrow(SessionError)
+    expect(() => replaceCourtPlayer(newSession(), 'boy', 'red')).toThrow(SessionError)
   })
 })

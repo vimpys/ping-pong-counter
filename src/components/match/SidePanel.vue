@@ -17,6 +17,8 @@ const props = defineProps<{
   disabled: boolean
   /** แสดงปุ่ม ⋯ สำหรับจัดการผู้เล่นฝั่งนี้ */
   hasMenu: boolean
+  /** ระยะที่กำลังลากป้ายเสิร์ฟ (px) — `null` เมื่อไม่ได้ลาก */
+  serveOffset?: number | null
 }>()
 
 const emit = defineEmits<{ score: []; undo: []; menu: [] }>()
@@ -26,8 +28,12 @@ const sideLabel = computed(() => (props.side === 'red' ? 'ฝั่งแดง'
 
 <template>
   <div
-    class="relative flex min-h-0 flex-col items-center justify-between overflow-hidden rounded-[22px] px-3 pt-2.5 pb-3 text-white"
-    :class="side === 'red' ? 'bg-red-side' : 'bg-blue-side'"
+    class="relative flex min-h-0 flex-col items-center justify-between rounded-[22px] px-3 pt-2.5 pb-3 text-white"
+    :class="[
+      side === 'red' ? 'bg-red-side' : 'bg-blue-side',
+      // ป้ายเสิร์ฟที่กำลังลากต้องล้นออกไปทับอีกฝั่งได้
+      serveOffset == null && 'overflow-hidden',
+    ]"
   >
     <!-- พื้นที่แตะนับแต้มทั้งแผง -->
     <button
@@ -99,8 +105,14 @@ const sideLabel = computed(() => (props.side === 'red' ? 'ฝั่งแดง'
 
     <div class="pointer-events-none relative flex w-full flex-col items-center gap-2.5">
       <span
-        class="flex h-10 items-center gap-1.5 rounded-full bg-white pr-3.5 pl-2.5 text-[17px] font-semibold whitespace-nowrap text-ink"
-        :class="{ invisible: !serveLabel }"
+        data-serve-badge
+        class="flex h-10 items-center gap-1.5 rounded-full bg-white pr-3.5 pl-2.5 text-[17px] font-semibold whitespace-nowrap text-ink transition-transform duration-200"
+        :class="{ invisible: !serveLabel, 'z-20 scale-110 animate-drag-glow': serveOffset != null }"
+        :style="
+          serveOffset != null
+            ? { transform: `translateX(${serveOffset}px)`, transition: 'none' }
+            : undefined
+        "
       >
         <AppIcon name="ball" :size="18" />
         {{ serveLabel ?? 'เสิร์ฟ' }}

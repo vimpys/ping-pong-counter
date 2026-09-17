@@ -128,6 +128,27 @@ export function undoPoint(state: SessionState): SessionState {
   return next
 }
 
+/**
+ * สลับข้างผู้เล่นในสนาม — สีอยู่กับฝั่งเดิม (แดงซ้าย น้ำเงินขวา) แต่ผู้เล่นย้ายข้าง
+ * แต้ม คนเสิร์ฟ และชนะติด ตามตัวผู้เล่นไปด้วย
+ */
+export function swapSides(state: SessionState): SessionState {
+  const next = clone(state)
+  next.court = { red: state.court.blue, blue: state.court.red }
+  next.points = state.points.map(otherSide)
+  next.firstServer = otherSide(state.firstServer)
+  return next
+}
+
+/** เปลี่ยนฝั่งที่เสิร์ฟก่อน — ทำได้เฉพาะตอนเริ่มเกม (0–0) */
+export function setFirstServer(state: SessionState, side: Side): SessionState {
+  if (state.points.length > 0) throw new SessionError('เปลี่ยนคนเสิร์ฟได้เฉพาะตอนเริ่มเกม')
+  if (state.firstServer === side) return state
+  const next = clone(state)
+  next.firstServer = side
+  return next
+}
+
 // ---------- จบเกม / หมุนคิว ----------
 
 function nextStreakCount(state: SessionState, winnerId: string): number {
@@ -257,6 +278,28 @@ export function reorderQueue(state: SessionState, order: readonly string[]): Ses
   if (!same) throw new SessionError('ลำดับคิวไม่ตรงกับผู้เล่นในคิว')
   const next = clone(state)
   next.queue = [...order]
+  return next
+}
+
+/**
+ * ผู้เล่นในคิวลงสนามแทนฝั่ง `side` — ทำได้เฉพาะตอนเริ่มเกม (0–0)
+ * คนที่ถูกแทนไปเป็นหัวคิว (ได้เล่นเกมถัดไป) และชนะติดของคนนั้นเริ่มนับใหม่
+ */
+export function replaceCourtPlayer(
+  state: SessionState,
+  playerId: string,
+  side: Side,
+): SessionState {
+  if (!state.queue.includes(playerId)) throw new SessionError('ผู้เล่นคนนี้ไม่ได้อยู่ในคิว')
+  if (state.points.length > 0) throw new SessionError('เปลี่ยนตัวผู้เล่นได้เฉพาะตอนเริ่มเกม')
+  const next = clone(state)
+  const replaced = next.court[side]
+  next.queue = next.queue.filter((id) => id !== playerId)
+  if (replaced !== null) {
+    next.queue.unshift(replaced)
+    if (next.streak?.playerId === replaced) next.streak = null
+  }
+  next.court[side] = playerId
   return next
 }
 

@@ -8,6 +8,7 @@ import { celebrate } from '@/native/celebrate'
 import router from '@/router'
 import { clickInDocument, waitForRoute } from '@/__tests__/dom'
 import { useSessionStore } from '@/stores/session'
+import QueueSection from '@/components/match/QueueSection.vue'
 import MatchView from '../MatchView.vue'
 
 vi.mock('@/native/celebrate', () => ({ celebrate: vi.fn<() => Promise<void>>() }))
@@ -46,6 +47,14 @@ describe('MatchView', () => {
   afterEach(() => {
     vi.useRealTimers()
     document.body.innerHTML = ''
+  })
+
+  it('tells how to move the serve only at 0–0', async () => {
+    const { wrapper, session } = await mountMatch()
+    expect(wrapper.text()).toContain('ลากป้ายเสิร์ฟไปอีกฝั่งเพื่อเปลี่ยนคนเสิร์ฟ')
+    session.score('red')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('ลากป้ายเสิร์ฟ')
   })
 
   it('shows both players, the score and who serves', async () => {
@@ -87,6 +96,122 @@ describe('MatchView', () => {
     vi.advanceTimersByTime(500)
     await wrapper.get(bluePanel).trigger('click')
     expect(session.game!.status.score).toEqual({ red: 1, blue: 1 })
+  })
+
+  function dragFrom(element: Element, toX: number) {
+    const pointer = (type: string, clientX: number) =>
+      element.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          isPrimary: true,
+          pointerId: 1,
+          clientX,
+          clientY: 5,
+        }),
+      )
+    pointer('pointerdown', 0)
+    pointer('pointermove', toX)
+    pointer('pointerup', toX)
+  }
+
+  describe('dragging', () => {
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(160)
+    })
+    afterEach(() => vi.restoreAllMocks())
+
+    it('swaps sides by dragging a panel across, without scoring', async () => {
+      const { wrapper, session } = await mountMatch()
+      session.score('red')
+      await flushPromises()
+
+      dragFrom(wrapper.get(redPanel).element, 100)
+      await wrapper.get(redPanel).trigger('click')
+      await flushPromises()
+
+      expect(session.state!.court).toEqual({ red: 'boy', blue: 'ton' })
+      expect(session.game!.status.score).toEqual({ red: 0, blue: 1 })
+      expect(wrapper.get(redPanel).attributes('aria-label')).toContain('บอย')
+
+      // แผงที่ลากกำลังเลื่อนกลับ (ยังซ้อนอีกฝั่ง) → ปิดการแตะไว้ชั่วคราว
+      const red = wrapper.get('[data-side="red"]')
+      expect(red.classes()).toContain('pointer-events-none')
+      vi.advanceTimersByTime(200)
+      await flushPromises()
+      expect(red.classes()).not.toContain('pointer-events-none')
+
+      vi.advanceTimersByTime(500)
+      await wrapper.get(bluePanel).trigger('click')
+      expect(session.game!.status.score).toEqual({ red: 0, blue: 2 })
+    })
+
+    it('shows a halo under the finger while dragging', async () => {
+      const { wrapper } = await mountMatch()
+      const panel = wrapper.get(redPanel).element
+      const pointer = (type: string, clientX: number) =>
+        panel.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            isPrimary: true,
+            pointerId: 1,
+            clientX,
+            clientY: 5,
+          }),
+        )
+      pointer('pointerdown', 0)
+      pointer('pointermove', 40)
+      await flushPromises()
+      expect(document.body.querySelector('.animate-drag-halo')).not.toBeNull()
+      pointer('pointerup', 40)
+      await flushPromises()
+      expect(document.body.querySelector('.animate-drag-halo')).toBeNull()
+    })
+
+    it('does not swap on a short drag', async () => {
+      const { wrapper, session } = await mountMatch()
+      dragFrom(wrapper.get(redPanel).element, 30)
+      await flushPromises()
+      expect(session.state!.court).toEqual({ red: 'ton', blue: 'boy' })
+    })
+
+    it('moves the serve by dragging the serve badge at 0–0 only', async () => {
+      const { wrapper, session } = await mountMatch()
+      const badge = () => wrapper.findAll('[data-serve-badge]')[0]!.element
+      const rect = { left: -10, right: 50, top: 0, bottom: 40 } as DOMRect
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(rect)
+
+      dragFrom(badge(), 100)
+      await flushPromises()
+      expect(session.game!.status.serve.server).toBe('blue')
+      expect(session.state!.court).toEqual({ red: 'ton', blue: 'boy' })
+
+      session.score('blue')
+      await flushPromises()
+      dragFrom(wrapper.findAll('[data-serve-badge]')[1]!.element, -100)
+      await flushPromises()
+      // มีแต้มแล้ว → ลากป้ายเสิร์ฟกลายเป็นลากสลับข้างแทน
+      expect(session.state!.firstServer).toBe('red')
+      expect(session.state!.court).toEqual({ red: 'boy', blue: 'ton' })
+    })
+  })
+
+  it('lets a queued player replace a court player at 0–0 only', async () => {
+    const { wrapper, session } = await mountMatch()
+    const queue = wrapper.getComponent(QueueSection)
+    expect(queue.props('canReplace')).toBe(true)
+
+    queue.vm.$emit('hoverCourt', { playerId: 'jay', side: 'red' })
+    await flushPromises()
+    expect(wrapper.text()).toContain('ปล่อยเพื่อให้เจลงแทนต้น')
+
+    queue.vm.$emit('replace', 'jay', 'red')
+    await flushPromises()
+    expect(session.state!.court).toEqual({ red: 'jay', blue: 'boy' })
+    expect(session.state!.queue).toEqual(['ton'])
+
+    session.score('red')
+    await flushPromises()
+    expect(queue.props('canReplace')).toBe(false)
   })
 
   it('shows the deuce banner', async () => {
