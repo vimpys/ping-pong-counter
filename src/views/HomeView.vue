@@ -7,10 +7,14 @@ import heroImage from '@/assets/home-hero.webp'
 import { useSessionStore } from '@/stores/session'
 
 const { state, game } = storeToRefs(useSessionStore())
+const version = __APP_VERSION__
 </script>
 
 <template>
-  <main class="flex h-full flex-col px-4 pb-4">
+  <main class="relative flex h-full flex-col px-4 pb-4">
+    <span class="absolute top-3 right-4 font-display text-xs font-semibold text-faint">
+      v{{ version }}
+    </span>
     <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 pt-4 text-center">
       <img
         :src="heroImage"
