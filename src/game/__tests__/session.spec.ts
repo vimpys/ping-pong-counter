@@ -368,10 +368,10 @@ describe('setFirstServer', () => {
 })
 
 describe('replaceCourtPlayer', () => {
-  it('puts a queued player on court and the replaced player at the head of the queue', () => {
+  it('puts a queued player on court and the replaced player at the end of the queue', () => {
     const s = replaceCourtPlayer(newSession(), 'fon', 'blue')
     expect(court(s)).toEqual(['ton', 'fon'])
-    expect(s.queue).toEqual(['boy', 'jay', 'mew'])
+    expect(s.queue).toEqual(['jay', 'mew', 'boy'])
   })
 
   it('resets the streak of the replaced player', () => {
@@ -379,7 +379,7 @@ describe('replaceCourtPlayer', () => {
     expect(streakOf(s, 'ton')).toBe(1)
     const replaced = replaceCourtPlayer(s, 'mew', 'red')
     expect(streakOf(replaced, 'ton')).toBe(0)
-    expect(replaced.queue[0]).toBe('ton')
+    expect(replaced.queue[replaced.queue.length - 1]).toBe('ton')
   })
 
   it('only works at 0–0 and for queued players', () => {

@@ -283,7 +283,7 @@ export function reorderQueue(state: SessionState, order: readonly string[]): Ses
 
 /**
  * ผู้เล่นในคิวลงสนามแทนฝั่ง `side` — ทำได้เฉพาะตอนเริ่มเกม (0–0)
- * คนที่ถูกแทนไปเป็นหัวคิว (ได้เล่นเกมถัดไป) และชนะติดของคนนั้นเริ่มนับใหม่
+ * คนที่ถูกแทนไปต่อท้ายคิว และชนะติดของคนนั้นเริ่มนับใหม่
  */
 export function replaceCourtPlayer(
   state: SessionState,
@@ -296,7 +296,7 @@ export function replaceCourtPlayer(
   const replaced = next.court[side]
   next.queue = next.queue.filter((id) => id !== playerId)
   if (replaced !== null) {
-    next.queue.unshift(replaced)
+    next.queue.push(replaced)
     if (next.streak?.playerId === replaced) next.streak = null
   }
   next.court[side] = playerId
