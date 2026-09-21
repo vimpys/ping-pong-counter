@@ -183,9 +183,17 @@ const inactive = computed(() => (state.value?.inactive ?? []).map(session.player
 
 const sheet = ref<MatchSheetState | null>(null)
 
-// ปุ่ม back ของ Android → ถามก่อนออก
+// ---------- คิวขยาย ----------
+
+const queueExpanded = ref(false)
+/** คิวขยายขึ้นไปได้ถึงใต้ header */
+const header = ref<HTMLElement>()
+const queueExpandTop = ref(0)
+
+// ปุ่ม back ของ Android → ย่อคิวก่อน ไม่งั้นถามก่อนออก
 useBackButton(() => {
-  sheet.value = { kind: 'leave' }
+  if (queueExpanded.value) queueExpanded.value = false
+  else sheet.value = { kind: 'leave' }
 })
 
 // คีย์ลัดบนคอม / Mac
@@ -197,13 +205,16 @@ useMatchShortcuts({
   hasWinner: () => winnerDialog.value !== null,
 })
 
-onMounted(() => setKeepAwake(true))
+onMounted(() => {
+  setKeepAwake(true)
+  queueExpandTop.value = header.value?.offsetHeight ?? 0
+})
 onUnmounted(() => setKeepAwake(false))
 </script>
 
 <template>
-  <main class="flex h-full flex-col bg-doodles">
-    <header class="flex h-15 shrink-0 items-center justify-between gap-1 pr-3 pl-1">
+  <main class="relative flex h-full flex-col bg-doodles">
+    <header ref="header" class="flex h-15 shrink-0 items-center justify-between gap-1 pr-3 pl-1">
       <button
         type="button"
         aria-label="ออกจากหน้าแข่ง"
@@ -306,6 +317,8 @@ onUnmounted(() => setKeepAwake(false))
     />
 
     <QueueSection
+      v-model:expanded="queueExpanded"
+      :expand-top="queueExpandTop"
       :queue="queue"
       :inactive="inactive"
       :can-replace="canReplace"

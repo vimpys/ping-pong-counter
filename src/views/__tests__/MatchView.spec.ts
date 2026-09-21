@@ -505,6 +505,61 @@ describe('MatchView leaving', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull()
   })
 
+  describe('expanding the queue', () => {
+    const handle = () => document.querySelector<HTMLButtonElement>('button[aria-expanded]')!
+    const queueSheet = () => handle().closest('section')!
+
+    function pointer(target: EventTarget, type: string, clientY: number) {
+      const event = new Event(type, { bubbles: true })
+      Object.assign(event, { pointerId: 1, button: 0, clientY })
+      target.dispatchEvent(event)
+    }
+
+    async function dragHandle(fromY: number, toY: number) {
+      pointer(handle(), 'pointerdown', fromY)
+      pointer(window, 'pointermove', toY)
+      pointer(window, 'pointerup', toY)
+      await flushPromises()
+    }
+
+    it('expands and collapses when the handle is tapped', async () => {
+      await mountMatch()
+      expect(handle().getAttribute('aria-label')).toBe('ขยายคิวรอเล่น')
+
+      handle().click()
+      await flushPromises()
+      expect(handle().getAttribute('aria-expanded')).toBe('true')
+      expect(queueSheet().classList).toContain('absolute')
+
+      handle().click()
+      await flushPromises()
+      expect(handle().getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('expands on a drag up and collapses on a drag down, ignoring a tiny move', async () => {
+      await mountMatch()
+      await dragHandle(500, 497)
+      expect(handle().getAttribute('aria-expanded')).toBe('false')
+
+      await dragHandle(500, 300)
+      expect(handle().getAttribute('aria-expanded')).toBe('true')
+
+      await dragHandle(300, 500)
+      expect(handle().getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('collapses the queue first on Android back', async () => {
+      await mountMatch()
+      handle().click()
+      await flushPromises()
+
+      expect(handleBack()).toBe('handled')
+      await flushPromises()
+      expect(handle().getAttribute('aria-expanded')).toBe('false')
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
+    })
+  })
+
   it('does not close the winner dialog on Android back', async () => {
     const { session } = await mountMatch()
     for (let i = 0; i < 11; i++) session.score('red')
