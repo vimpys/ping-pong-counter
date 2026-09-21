@@ -58,8 +58,8 @@ const sideLabel = computed(() => (props.side === 'red' ? 'ฝั่งแดง'
       </span>
     </button>
 
-    <!-- px เว้นที่ให้ปุ่ม ⋯ มุมขวาบน -->
-    <div class="pointer-events-none relative flex w-full flex-col items-center gap-1.5 px-[30px]">
+    <!-- pt เว้นแถวบนให้ปุ่ม ⋯ — ชื่อจึงใช้ความกว้างได้เต็มแผง (เว้นไว้เสมอให้สองฝั่งสูงเท่ากัน) -->
+    <div class="pointer-events-none relative flex w-full flex-col items-center gap-1.5 pt-7.5">
       <span class="max-w-full truncate font-display text-[31px] leading-tight font-bold">
         {{ name }}
       </span>
