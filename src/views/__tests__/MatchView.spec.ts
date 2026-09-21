@@ -462,6 +462,13 @@ describe('MatchView queue management', () => {
     expect(session.state!.queue).toEqual([fon, jay])
     expect(wrapper.get('ol').text()).toMatch(/^1\s*ฝน/)
   })
+
+  it('drags the queue with Sortable fallback, not native drag (needed to drop on court)', async () => {
+    const { wrapper } = await mountMatch()
+    const list = wrapper.findComponent({ name: 'VueDraggable' })
+    expect(list.props('forceFallback')).toBe(true)
+    expect(list.props('fallbackOnBody')).toBe(true)
+  })
 })
 
 describe('MatchView leaving', () => {

@@ -109,14 +109,16 @@ const queueModel = computed({
     </p>
 
     <div class="mt-1 overflow-y-auto px-4 pb-3">
+      <!-- VueDraggable ประกาศ props ไม่มีชนิด — ต้องส่ง true ตรงๆ (เขียนแค่ชื่อ attr จะได้ "" = ปิด)
+           ไม่งั้นบนคอมจะใช้ native drag ซึ่งไม่ส่ง pointermove → ลากลงสนามไม่ได้ -->
       <VueDraggable
         v-if="queue.length > 0"
         v-model="queueModel"
         tag="ol"
         handle=".drag-handle"
         :animation="150"
-        force-fallback
-        fallback-on-body
+        :force-fallback="true"
+        :fallback-on-body="true"
         @start="onDragStart"
         @end="onDragEnd"
         ghost-class="opacity-30"
